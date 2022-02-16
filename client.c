@@ -24,6 +24,10 @@
 #define PORT        5500
 #define HEIGHT      24
 #define WIDTH       80
+#define FRUIT       -111
+#define WALL        -1111
+#define WALL2       -1112
+#define BORDER      -99
 #define REFRESH     0.15
 #define WINNER      -94
 #define ONGOING     -34
@@ -209,9 +213,7 @@ int sign_to_server(int sockfd){
                     }
                     printf("|             => [1]. Join waiting-room           |\n");
                     printf("|             => [2]. Change password             |\n");
-                    printf("|             => [3]. Show profile                |\n");
-                    printf("|             => [4]. Show leaderboard            |\n");
-                    printf("|             => [5]. Quit game                   |\n");
+                    printf("|             => [3]. Quit game                   |\n");
                     printf("|_________________________________________________|\n");
                     if(signup == -10){
                         printf("Please reconnect in a few minutes because server is overloading ...\n");
@@ -283,7 +285,7 @@ int sign_to_server(int sockfd){
                             signup = -3;
                             goto back;
                             break;
-                        case 5:
+                        case 3:
                             signup = 0;
                             write(sockfd, choice, 2);
                             return 0;
@@ -463,11 +465,10 @@ void* update_screen(void* arg){     // every 0.1s
         wclear(win);
         box(win, '|', '-');
         for( int i = left->center->y - left->halfLength; i <= left->center->y + left->halfLength; i++) {
-            mvwaddch(win, i, 1, 'H');
+                mvwaddch(win, i, 1, 'H');
         }
         for( int i = right->center->y - right->halfLength; i <= right->center->y + right->halfLength; i++) {
-            mvwaddch(win, i, WIDTH-2, 'H');
-
+                mvwaddch(win, i, WIDTH - 2, 'H');
         }
         mvwaddch(win, ball->center->y, ball->center->x, 'O');
 
@@ -537,17 +538,17 @@ int main(int argc, char *argv[]){
     win = newwin(HEIGHT, WIDTH, 0, 0);
     point_win = newwin(10, WIDTH, HEIGHT + 5, 0); // draw the point display
     
-    wclear(win);
-    mvprintw((HEIGHT-20)/2 + 10, (WIDTH-58)/2," Instructions:"); 
-    mvprintw((HEIGHT-20)/2 + 12, (WIDTH-58)/2," - Use the keys [W], [S] to move your paddle.");
-    mvprintw((HEIGHT-20)/2 + 13, (WIDTH-58)/2," - If want to pause game, press [P].");
-    mvprintw((HEIGHT-20)/2 + 14, (WIDTH-58)/2," - Don't let ball hit your wall, rival"); 
-    mvprintw((HEIGHT-20)/2 + 15, (WIDTH-58)/2,"   will be added 1 point.");
-    mvprintw((HEIGHT-20)/2 + 16, (WIDTH-58)/2," - Hit the rival's wall, you'll be added 1 point");
-    mvprintw((HEIGHT-20)/2 + 17, (WIDTH-58)/2," - Press '.' to quit at any time.");
-    mvprintw((HEIGHT-20)/2 + 19, (WIDTH-58)/2,"Let ress any key to start game. . ."); 
-    wrefresh(win);
-    wgetch(win);
+    // wclear(win);
+    // mvprintw((HEIGHT-20)/2 + 10, (WIDTH-58)/2," Instructions:"); 
+    // mvprintw((HEIGHT-20)/2 + 12, (WIDTH-58)/2," - Use the keys [W], [S] to move your paddle.");
+    // mvprintw((HEIGHT-20)/2 + 13, (WIDTH-58)/2," - If want to pause game, press [P].");
+    // mvprintw((HEIGHT-20)/2 + 14, (WIDTH-58)/2," - Don't let ball hit your wall, rival"); 
+    // mvprintw((HEIGHT-20)/2 + 15, (WIDTH-58)/2,"   will be added 1 point.");
+    // mvprintw((HEIGHT-20)/2 + 16, (WIDTH-58)/2," - Hit the rival's wall, you'll be added 1 point");
+    // mvprintw((HEIGHT-20)/2 + 17, (WIDTH-58)/2," - Press '.' to quit at any time.");
+    // mvprintw((HEIGHT-20)/2 + 19, (WIDTH-58)/2,"Let ress any key to start game. . ."); 
+    // wrefresh(win);
+    // wgetch(win);
 
     // Init ball, paddle
     left = setPaddle(1, HEIGHT/2, 2); // left paddle
@@ -581,7 +582,6 @@ int main(int argc, char *argv[]){
             ball->plus_y = -1 * ball->plus_y;
         } else if( 1 > ball->center->x || ball->center->x > WIDTH - 2 ) {
             // reset position of ball
-
             left->center->x = 1;
             left->center->y = HEIGHT / 2;
 
