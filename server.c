@@ -8,323 +8,360 @@
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <errno.h>
 #include "process.h"
+#include "ball.h"
+#include "paddle.h"
+#include "point.h"
+#include "game_action.h"
 
-#define PORT 5500
-#define MAX_PLAYERS 100
-#define UP_KEY 'W'
-#define DOWN_KEY 'W'
 
-static _Atomic unsigned int cli_count = 0;
-// static int uid = 10;
+#define DEFAULT_KEY         'N'
+#define PORT                5500
+#define MAX_PLAYERS         100
+#define HEIGHT              24
+#define WIDTH               80
+#define WINNER_LENGTH       10
+#define UP_KEY              'W'
+#define DOWN_KEY            'S'
+ 
+int             someone_won = 0;
+int check_run = 0;
 
-// /* Client structure */
-// typedef struct{
-// 	struct sockaddr_in address;
-// 	int sockfd;
-// 	int uid;
-// 	char name[32];
-// } client_t;
 
-// client_t *clients[MAX_CLIENTS];
-
-// pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-extern node head;
+int client[2];
 char *room;
+int start = 0;
+int t1 = 5;
+int t2 = 4;
+char host[256];
+int number_players = 0;
 
-/* Add clients to queue */
-// void queue_add(client_t *cl){
-// 	pthread_mutex_lock(&clients_mutex);
+//Direction key types
+typedef enum{
+    UP    = UP_KEY, 
+    DOWN  = DOWN_KEY, 
+} direction;
 
-// 	for(int i=0; i < MAX_CLIENTS; ++i){
-// 		if(!clients[i]){
-// 			clients[i] = cl;
-// 			break;
-// 		}
-// 	}
+int make_thread(void* (*fn)(void *), void* arg){
+    int             err;
+    pthread_t       tid;
+    pthread_attr_t  attr;
 
-// 	pthread_mutex_unlock(&clients_mutex);
-// }
-
-/* Remove clients to queue */
-// void queue_remove(int uid){
-// 	pthread_mutex_lock(&clients_mutex);
-
-// 	for(int i=0; i < MAX_CLIENTS; ++i){
-// 		if(clients[i]){
-// 			if(clients[i]->uid == uid){
-// 				clients[i] = NULL;
-// 				break;
-// 			}
-// 		}
-// 	}
-
-// 	pthread_mutex_unlock(&clients_mutex);
-// }
-
-/* Send message to all clients except sender */
-// void send_message(char *s, int uid){
-// 	pthread_mutex_lock(&clients_mutex);
-
-// 	for(int i=0; i<MAX_CLIENTS; ++i){
-// 		if(clients[i]){
-// 			if(clients[i]->uid != uid){
-// 				if(write(clients[i]->sockfd, s, strlen(s)) < 0){
-// 					perror("ERROR: write to descriptor failed");
-// 					break;
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	pthread_mutex_unlock(&clients_mutex);
-// }
-
-// char *encode_server(int c_x, int c_y, int b_x, int b_y) {       // c_x, c_y is position of paddles, b_x, b_y is position of ball
-//     char client_x[100], client_y[100], ball_x[100], ball_y[100];
-//     sprintf(client_x, "%d", c_x);
-//     sprintf(client_y, "%d", c_y);
-//     sprintf(ball_x, "%d", b_x);
-//     sprintf(ball_y, "%d", b_y);
-//     char *result = client_x;
-//     strcat(result, ",");
-//     strcat(result, client_y);
-//     strcat(result, ";");
-//     strcat(result, ball_x);
-//     strcat(result, ",");
-//     strcat(result, ball_y);
-//     return result;
-// }
-
-// int clientX, clientY; // vi tri paddle cua client 
-
-// void decode_server(char data[256]) { 
-//     char *tempX, *tempY, dataX[100], dataY[100], *ptr;
-//     tempX = strtok(data, ",");
-//     tempY = strtok(NULL, ",");
-//     strcpy(dataX, tempX);
-//     strcpy(dataY, tempY);
-//     clientX = strtol(dataX, &ptr, 10);
-//     clientY = strtol(dataY, &ptr, 10);
-// }
-
-void* client_handler(void* arg) {
-    // Read data from file
-    FILE *fp;
-    char account[100],inPassword[100];
-    int status;
-    int count = 0;
-    fp = fopen("account.txt", "r");
-
-    while(fscanf(fp, "%s %s %d", account, inPassword, &status) != EOF){
-        count++;
-    }
-    fclose(fp);
-    fp = fopen("account.txt", "r");
-    struct Accounts accounts_list[count + 1];
-    for(int i = 0; i < count; i++) {
-        fscanf(fp, "%s %s %d", accounts_list[i].account, accounts_list[i].password, &accounts_list[i].status);
-        head = addTail(head, accounts_list[i].account, accounts_list[i].password, accounts_list[i].status);
-    }
-    fclose(fp);
-    // end read FILE
-    cli_count++;
-    int clientfd = (intptr_t) arg;
-    pthread_detach(pthread_self());
-    char check[50];
-    char username[256];
-    char password[256];
-    char recv_data[256];
-    bzero(&recv_data, 12);
-
-    while(1) {
-        int data = read(clientfd, &recv_data, 2);
-        if(data == 0) break;
-        recv_data[data] = '\0';
-        printf("Received from client in share-socket %d: %s\n", clientfd, recv_data);
-        if(strlen(recv_data) == 0){
-            break;
-        }
-        // Register handle
-        if(strcmp(recv_data, "1") == 0){
-            printf("Received from client in share-socket %d: Register\n", clientfd);
-            data = read(clientfd, &username, 256);
-            if(data == 0){
-                exit(0);
-            }
-            username[data] = '\0';
-            if (username[strlen(username) - 1] == '\n')
-                username[strlen(username) - 1] = 0;
-            node checkAcc = findExistAccount(head, username);
-            if(checkAcc != NULL) {
-                write(clientfd, "NotOK", 6);
-            } else {
-                write(clientfd, "OK", 3);
-                data = read(clientfd, &password, 256);
-                if(data == 0){
-                    break;
-                }
-                password[data] = '\0';
-                if (password[strlen(password) - 1] == '\n')
-                    password[strlen(password) - 1] = 0;
-                printf("Receive username from client in share-socket %d: %s\n", clientfd, username);
-                printf("Receive password from client in share-socket %d: %s\n", clientfd, password);
-                addTail(head, username, password, 1);
-                printFile(head);
-            }
-
-        } else if(strcmp(recv_data, "2") == 0) {    // Login handle
-            printf("Received from client in share-socket %d: Login\n", clientfd);
-            
-            data = read(clientfd, &username, 256);
-            if(data == 0){
-                exit(0);
-            }
-            username[data] = '\0';
-            if (username[strlen(username) - 1] == '\n')
-                username[strlen(username) - 1] = 0;
-            node checkAcc = findExistAccount(head, username);
-            if(checkAcc == NULL || checkAcc->status == 0) {
-                write(clientfd, "NotOK", 6);
-            } else {
-                write(clientfd, "OK", 3);
-                data = read(clientfd, &password, 256);
-                if(data == 0){
-                    break;
-                }
-                password[data] = '\0';
-                if (password[strlen(password) - 1] == '\n')
-                    password[strlen(password) - 1] = 0;
-                printf("Receive username from client in share-socket %d: %s\n", clientfd, username);
-                printf("Receive password from client in share-socket %d: %s\n", clientfd, password);
-                while(strcmp(checkAcc->password, password) != 0){
-                    write(clientfd, "Password not correct!", 21);
-                    data = read(clientfd, &password, 256);
-                    if(data == 0){
-                        break;
-                    }
-                    password[data] = '\0';
-                    if (password[strlen(password) - 1] == '\n')
-                    password[strlen(password) - 1] = 0;
-                }
-                write(clientfd, "CorrectPass", 12);
-                back:
-                fflush(stdin);
-                data = read(clientfd, &recv_data, 2);
-                if(data == 0){
-                    break;
-                }
-                recv_data[data] = '\0';
-                if(strcmp(recv_data, "1") == 0){    // Waiting room
-                    while(1) {
-                        data = read(clientfd, &check, 50);
-                        if(data == 0) {
-                            break;
-                        }
-                        check[data] = '\0';
-                        switch(check[0]) {
-                            case 's':
-                            case 'S':
-                                if(cli_count == 2) {
-                                    write(clientfd, "Play", 5);
-                                } else {
-                                    write(clientfd, "Waiting", 8);
-                                }
-                                break;
-                            case 'q':
-                            case 'Q':
-                                write(clientfd, "Quit", 5);
-                                break;
-                            default: 
-                                break;
-                        }
-                    }
-                    break;
-                } else if(strcmp(recv_data, "2") == 0){ // Change password
-                    printf("Received from client in share-socket %d: Change password\n", clientfd);
-                    char new[256];
-                    data = read(clientfd, &new, 256);
-                    if(data == 0) {
-                        break;
-                    }
-                    new[data] = '\0';
-                    if (new[strlen(new) - 1] == '\n')
-                        new[strlen(new) - 1] = 0;
-                    strcpy(checkAcc->password, new);
-                    printFile(head);
-                    goto back;
-                } else if(strcmp(recv_data, "3") == 0){ // Quit
-                    printf("Received from client in share-socket %d: Quit game\n", clientfd);
-                    break;
-                }
-            }
-        }
-    }
+    err = pthread_attr_init(&attr);
+    if(err != 0)
+        return err;
+    err = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if(err == 0)
+        err = pthread_create(&tid, &attr, fn, arg);
+    pthread_attr_destroy(&attr);
+    return err;
 }
 
-// Handle Ctrl C
-void ctr_c_handler() {
-    printf("\nExit Server!\n");
+//Output error message and exit cleanly
+void error(const char* msg){
+    perror(msg);
+    fflush(stdout);
+    exit(1);
+}
+
+//Handle ctrl+c signal
+void ctrl_c_handler(){
+    printf("\nServer exited!.\n");
     exit(0);
 }
 
-int main(int argc, char *argv[]) {
+void processRoom(char s[], char name[]){
+    char tmp[256];
+    const char space[2] = "_";
+    char *token;
+    token = strtok(s, space);
+    char room_tmp[256];
+    room_tmp[0] = '\0';
+    strcat(room_tmp, "_");
+    while(token != NULL){
+        strcpy(tmp, token);
+        if(strcmp(tmp, name) != 0){
+            strcat(room_tmp, tmp);
+        }
+        token = strtok(NULL, space);
+        if(token && strlen(room_tmp) != 1) strcat(room_tmp, "_");
+    }
+    if(room_tmp == NULL) s[0] = '\0';
+    else strcpy(s, room_tmp);
+}
 
+//Thread gameplay function
+void* gameplay(void* arg){ 
+    if(number_players < 0) number_players = 0;
+    if(strlen(room) == 0) host[0] = '\0';
+    User *tmp;
+    char usename[256];
+    char password[256];
+    List l;
+    InitList(&l);
+    readFile("nguoidung.txt", &l);
+    int fd = *(int*) arg; 
+    int player_no = fd-3;
+    char recv_data[256];
+    bzero(&recv_data, 12);
+    int check_host = 0;
+    while(1){
+        int xxx = read(fd, &recv_data, 2);
+        if(xxx == 0) break;
+        recv_data[xxx] = '\0';
+        printf("Received from client in share-socket %d: %s\n", fd, recv_data);
+        if(strlen(recv_data) == 0){
+            break;
+        }
+        if(strcmp(recv_data, "1") == 0){
+            printf("Received from client in share-socket %d: Register\n", fd);
+            xxx = read(fd, &usename, 256);
+            if(xxx == 0){
+                goto end;
+            }
+            usename[xxx] = '\0';
+            tmp = checkUser(usename, l);
+            if(tmp != NULL){
+                write(fd, "NotOK", 6);
+            }
+            else{
+                write(fd, "OK", 3);
+                xxx = read(fd, &password, 256);
+                if(xxx == 0){
+                    goto end;
+                }
+                password[xxx] = '\0';
+                printf("Received usename from client in share-socket %d: %s\n", fd, usename);
+                printf("Received password from client in share-socket %d: %s\n", fd, password);
+                int status = 0;
+                int win_times = 0;
+                User *p = makeUser(usename, password, status, win_times);
+                addUser(&l, p);
+                writeFile("nguoidung.txt", l);
+            }
+        }
+        else if(strcmp(recv_data, "2") == 0){
+            printf("Received from client in share-socket %d: Login\n", fd);
+            xxx = read(fd, &usename, 256);
+            if(xxx == 0){
+                goto end;
+            }
+            usename[xxx] = '\0';
+            tmp = checkUser(usename, l);
+            if(tmp == NULL){
+                write(fd, "NotOK", 6);
+            }
+            else{
+                write(fd, "OK", 3);
+                xxx = read(fd, &password, 256);
+                if(xxx == 0){
+                    break;
+                }
+                password[xxx] = '\0';
+                printf("Receive usename from client in share-socket %d: %s\n", fd, usename);
+                printf("Receive passwork from client in share-socket %d: %s\n", fd, password);
+                while(strcmp(tmp->password, password) != 0){
+                    write(fd, "Password sai!", 14);
+                    xxx = read(fd, &password, 256);
+                    if(xxx == 0){
+                        break;
+                    }
+                    password[xxx] = '\0';
+                }
+                write(fd, "OKchoi", 7);
+                // break;
+                back:
+                __fpurge(stdin);
+                read(fd, &recv_data, 2);
+                if(xxx == 0){
+                    goto end;
+                }
+                recv_data[xxx] = '\0';
+                if(strcmp(recv_data, "1") == 0){
+                    printf("Received from client in share-socket %d: Join waitting-room\n", fd);
+                    if(strlen(usename) < 1) goto end;
+                    strcat(room, "_");
+                    strcat(room, usename);
+                    if(host[0] == '\0') strcpy(host, usename);
+                    if(number_players == 9){
+                        write(fd, "maxplayers", 11);
+                        goto end;
+                    }
+                    if(check_run == 1){
+                        write(fd, "running", 8);
+                        room[0] = '\0';
+                        goto back;
+                    }
+                    number_players += 1;
+                    write(fd, room, 256);
+                    printf("||Number of players are accessing: %d||\n", number_players);
+                    while(1){
+                        xxx = read(fd, &recv_data, 256);
+                        if(xxx == 0){
+                            // goto end;
+                            break;
+                        }
+                        if(strcmp(recv_data, "S") == 0 || strcmp(recv_data, "s") == 0){
+                            strcpy(recv_data, "start");
+                            write(fd, recv_data, 256);
+                            check_run = 1;
+                            start = 1;
+                            sleep(t2);
+                            check_host = 1;
+                            break;
+                        }
+                        else if(strcmp(recv_data, "Q") == 0 || strcmp(recv_data, "q") == 0){
+                            strcpy(recv_data, "quit");
+                            write(fd, recv_data, 256);
+                            processRoom(room, tmp->usename);
+                            if(strlen(room) == 1) room = '\0';
+                            // number_players -= 1;
+                            // printf("ssssss\n");
+                            goto end;
+                            break;
+                        }
+                        if(start == 1){
+                            t1 = 3;
+                            strcpy(recv_data, "start");
+                            write(fd, recv_data, 256);
+                            break;
+                        }
+                        else{
+                            write(fd, room, 256);
+                        }
+                        // start = 1;
+                        sleep(t1);
+                    }
+                    break;
+                }
+                else if(strcmp(recv_data, "2") == 0){
+                    printf("Received from client in share-socket %d: Change password\n", fd);
+                    char new[256];
+                    xxx = read(fd, &new, 256);
+                    if(xxx == 0) break;
+                    // printf("nhan: %s\n", new);
+                    strcpy(tmp->password, new);
+                    writeFile("nguoidung.txt", l);
+                    goto back;
+                }
+                else if(strcmp(recv_data, "5") == 0){
+                    printf("Received from client in share-socket %d: Quit game\n", fd);
+                    if(strcmp(recv_data, "5") == 0){
+                        goto end;
+                    }
+                }
+            }
+        }
+        // break;
+    }
+    printf("Player %d had connected to game!\n", player_no);
+    if(tmp != NULL){
+        tmp->status += 1;
+        writeFile("nguoidung.txt", l);
+    }
+    // printf("%s\n", host);
+    if(start == 1){
+        room[0] = '\0';
+        number_players = 0;
+    }
+    if(check_host == 0 && strcmp(tmp->usename, host) == 0){
+        // start = 1;
+        // room[0] = '\0';
+        host[0] = '\0';
+        // check_host = 0;
+        processRoom(room, tmp->usename);
+        // printf("%s---\n", room);
+        if(strlen(room) == 1) room[0] = '\0';
+        number_players -= 1;
+    }
+    else{
+        processRoom(room, tmp->usename);
+        start = 0;
+        check_host = 0;
+    }
+
+    //Determine player number from file descriptor argument
+    end:
+    if(number_players != 0) number_players -= 1;
+    printf("||Number of players are accessing: %d||\n", number_players);
+
+    //Variables for user input
+    
+    char key_buffer;
+    int n;
+    int  success = 1;
+
+    while(success){
+        char key[2];
+        key[0] = DEFAULT_KEY;
+        int i;
+        //Player key input
+        bzero(&key_buffer, 1);
+        n = read(fd, &key_buffer, 1);
+        if (n <= 0)
+            break;
+        //If user key is a direction, then apply it
+        key_buffer = toupper(key_buffer);   
+        if(  key_buffer == UP || key_buffer == DOWN || key_buffer == 'L' || key_buffer == 'R') { 
+            key[0] = key_buffer;
+        }
+        for(i = 0; i < 2; i++){
+			    if(client[i] != fd){
+                    // printf("Key is %s\n", key);
+                    if(write(client[i], key, 2) < 0){
+                        perror("ERROR: write to descriptor failed");
+                        break;
+                    }
+                }
+        }  
+    }
+}
+
+//Main function
+int main(){
+    room = (char *)malloc(256*sizeof(char));
     int socket_fds[MAX_PLAYERS];     
     struct sockaddr_in socket_addr[MAX_PLAYERS];
     int i;
 
-    // Handle Ctrl C
-    signal(SIGINT, ctr_c_handler);
-
-    if(argc != 2) {
-        printf("Wrong input format!\n");
-        exit(1);
-    }
-    if(checkValidPort(argv[1]) == 0) {
-        printf("Invalid port!\n");
-        exit(1);
-    }
-    int SERV_PORT = atoi(argv[1]);
-
-    if((socket_fds[0] = socket(AF_INET, SOCK_STREAM, 0)) <= 0){
-        perror("Error");
-        exit(1); 
-    }
-
+    //Handle Ctrl+C
+    signal(SIGINT, ctrl_c_handler);
+    //Create server socket
+    socket_fds[0] = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fds[0] < 0) 
+        error("ERROR opening socket");
+        
+    //Set socket address to zero and set attributes
     bzero((char *) &socket_addr[0], sizeof(socket_addr[0]));  
     socket_addr[0].sin_family = AF_INET;
-    socket_addr[0].sin_addr.s_addr = INADDR_ANY; 
-    socket_addr[0].sin_port = htons(SERV_PORT);
-
-    if (bind(socket_fds[0], (struct sockaddr *) &socket_addr[0], sizeof(socket_addr[0])) < 0) {
-        perror("Error");
-        exit(0); 
-    }
+    socket_addr[0].sin_addr.s_addr = INADDR_ANY;
+    //Converting unsigned short integer from host byte order to network byte order. 
+    socket_addr[0].sin_port = htons(PORT);
     
-     if(listen(socket_fds[0], 100) != 0) {
-        perror("Error");
-        exit(0); 
-    }
+    //Assigning address specified by addr to the socket referred by the server socket fd
+    if (bind(socket_fds[0], (struct sockaddr *) &socket_addr[0], sizeof(socket_addr[0])) < 0) 
+            error("ERROR on binding");
 
-    socklen_t len = sizeof(socket_addr[0]);
+    //Marking socket as a socket that will be used to accept incoming connection requests  
+    listen(socket_fds[0], 9);
+    socklen_t clilen = sizeof(socket_addr[0]);
 
-    while(1) {
-        for(i = 1;; i++){
-            socket_fds[i] = accept(socket_fds[0], (struct sockaddr *) &socket_addr[i], &len);
+    while(1){
+        for(i = 1; ; i++){
+            //Accepting an incoming connection request
+            socket_fds[i] = accept(socket_fds[0], (struct sockaddr *) &socket_addr[i], &clilen);
             if (socket_fds[i] < 0) 
-                perror("ERROR on accept");
-            if(i < 3) { // create thread to handle client request
-                pthread_t tid;
-                pthread_create(&tid, NULL, &client_handler, (void *)(intptr_t)socket_fds[i]);
-            } else {    // if more than 2 clients have access => reject
-                close(socket_fds[i]);
-                continue;
-            }
+                error("ERROR on accept");
+            
+            client[i-1] = socket_fds[i];
+            
+            if(someone_won)
+                someone_won = 0;
+            
+            make_thread(&gameplay, &socket_fds[i]); 
         }
+        //Closing the server socket
         close(socket_fds[0]);  
     }
-    return 0;
+    return 0; 
 }
