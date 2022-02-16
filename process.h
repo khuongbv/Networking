@@ -1,161 +1,228 @@
 #include <stdio.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <ctype.h>
+#include <stdio_ext.h>
 
 #define MAX 256
 #define BUFF_SIZE 256
 
-struct Accounts {
-    char account[100];
-    char password[100];
+int login_value = 0;
+char login_user[MAX];
+
+typedef struct _User{
+    char usename[MAX];
+    char password[MAX];
     int status;
-};
+    int win_times;
+    struct _User *pNext;
+} User;
 
-struct LinkedList{
-    char *username;
-    char *password;
-    int status;
-    int wrongPassword;
-    struct LinkedList *next;
-};
+typedef struct List{
+    User *pHead;
+    User *pTail;
+} List;
 
-typedef struct LinkedList *node;
-
-node head = NULL;
-
-node CreateNode(char *username, char *password, int status){
-    node temp; // declare a node
-    temp = (node)malloc(sizeof(struct LinkedList)); // Cấp phát vùng nhớ dùng malloc()
-    temp->next = NULL;// Cho next trỏ tới NULL
-    temp->username = username;
-    temp->password = password;
-    temp->status = status; 
-    temp->wrongPassword = 3;
-    return temp;
+void InitList(List *l){
+    l->pHead = l->pTail = NULL;
 }
- 
-node addTail(node head, char *username, char *password, int status){
-    node temp,p;
-    temp = CreateNode(username, password, status);
-    if(head == NULL){
-        head = temp;     
-    }
+
+User *makeUser(char usename[], char password[], int status, int win_times){
+    User *p = (User *)malloc(sizeof(User));
+    strcpy(p->usename, usename);
+    strcpy(p->password, password);
+    p->status = status;
+    p->win_times = win_times;
+    p->pNext = NULL;
+    return p;
+}
+
+void addUser(List *l, User *p){
+    if(l->pHead == NULL)
+        l->pHead = l->pTail = p;
     else{
-        p  = head;
-        while(p->next != NULL){
-            p = p->next;
-        }
-        p->next = temp;
+        l->pTail->pNext = p;
+        l->pTail = p;
     }
-    return head;
 }
 
-void readFile() {
-    FILE *fp;
-    char account[100],password[100];
+int checkBye(char needCheck[]){
+    if(strcmp(needCheck, "Bye") == 0 || strcmp(needCheck, "bye") == 0 || strcmp(needCheck, "BYE") == 0) return 1;
+    return 0;
+}
+
+void readFile(char *file_name, List *l){
+    FILE *fin = fopen(file_name, "r");
+
+    if (fin == NULL) {
+        printf("Can't open file\n");
+        return;
+    }
+    char *token;
+    char tmp[MAX];
+    char tmp2[MAX];
+    char usename[MAX];
+    char password[MAX];
     int status;
-    int count = 0;
-    fp = fopen("account.txt", "r");
+    int win_times;
+    const char space[2] = " ";
 
-    while(fscanf(fp, "%s %s %d", account, password, &status) != EOF){
-        count++;
-    }
-    fclose(fp);
-    fp = fopen("account.txt", "r");
-    struct Accounts accounts_list[count + 1];
-    for(int i = 0; i < count; i++) {
-        fscanf(fp, "%s %s %d", accounts_list[i].account, accounts_list[i].password, &accounts_list[i].status);
-        head = addTail(head, accounts_list[i].account, accounts_list[i].password, accounts_list[i].status);
-    }
-    fclose(fp);
-}
-
-void printFile(node head) {
-    FILE *wf;
-    wf = fopen("account.txt", "w");
-    for(node p = head; p != NULL; p = p->next){
-        fprintf(wf, "%s %s %d\n", p->username, p->password, p->status);
-    }
-    fclose(wf);
-}
-
-int checkNumber(char ch) {
-    if(ch >= '0' && ch <= '9') {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-int checkValidPort(char *port) {
-    for(int i = 0; i < strlen(port); i++) {
-        if(checkNumber(port[i]) == 0) {
-            return 0;
+    while(!feof(fin)){
+        fgets(tmp2, 256, fin);
+        token = strtok(tmp2, space);
+        strcpy(usename, token);
+        token = strtok(NULL, space);
+        strcpy(password, token);
+        token = strtok(NULL, space);
+        strcpy(tmp, token);
+        if(strlen(tmp) > 1){
+            status = (tmp[0] - '0')*10 + (tmp[1] - '0');
         }
+        else status = tmp[0] - '0';
+        token = strtok(NULL, space);
+        strcpy(tmp, token);
+        // printf("%s---\n",tmp);
+        if(tmp[strlen(tmp)-1] == '\n')  tmp[strlen(tmp)-1] = '\0';
+        if(strlen(tmp) > 1){
+            win_times = (tmp[0] - '0')*10 + (tmp[1] - '0');
+        }
+        else win_times = tmp[0] - '0';
+        User *p = makeUser(usename, password, status, win_times);
+        addUser(l, p);
     }
-    return 1;
+    fclose(fin);
 }
 
-node findExistAccount(node head, char *acc) {
-    for(node p = head; p != NULL; p = p->next){
-        if(strcmp(p->username, acc) == 0) {
-            return p;
-        }
+User *checkUser(char needCheck[], List l){
+    for(User *p = l.pHead; p != NULL; p = p->pNext){
+        if(strcmp(p->usename, needCheck) == 0) return p;
     }
     return NULL;
 }
 
-int findAccountStatus(node head, char *acc) {
-    for(node p = head; p != NULL; p = p->next){
-        if(strcmp(p->username, acc) == 0) {
-            if(p->status == 1) {
-                return 1;
-            } else {
-                return 0;
-            }
+void writeFile(char *file_name, List l){
+    FILE *fin = fopen(file_name, "w");
+    for(User *p = l.pHead; p != NULL; p = p->pNext){
+        fprintf(fin,"%s", p->usename);
+        fprintf(fin, "%s", " ");
+        fprintf(fin, "%s", p->password);
+        fprintf(fin, "%s", " ");
+        char c[3]; 
+        if(p->status > 9){
+            c[0] = p->status/10 + '0';
+            c[1] = (p->status - 10*(p->status/10)) + '0';
+            c[2] = '\0';
         }
-    }
-    return 0;
-}
-
-void changeStatus(node head, char *acc) {
-    for(node p = head; p != NULL; p = p->next){
-        if(strcmp(p->username, acc) == 0) {
-            p->status = 0;
+        else{
+            c[0] = p->status + '0';
+            c[1] = '\0';
         }
-    }
-}
-
-void changePassword(node head, char *acc, char *pass) {
-    for(node p = head; p != NULL; p = p->next){
-        if(strcmp(p->username, acc) == 0) {
-            p->password = pass;
+        fprintf(fin, "%s", c);
+        fprintf(fin, "%s", " ");
+        if(p->win_times > 9){
+            c[0] = p->win_times/10 + '0';
+            c[1] = p->win_times - 10*(p->win_times/10) + '0';
+            c[2] = '\0';
         }
+        else{
+            c[0] = p->win_times + '0';
+            c[1] = '\0';
+        }
+        fprintf(fin, "%s", c);
+        if(p != l.pTail) fprintf(fin, "\n");
+    }
+    fclose(fin);
+}
+
+void sortListStatus(List *clas){
+    List stu1, stu2;
+    if(clas->pHead == clas->pTail) return;
+    InitList(&stu1);  InitList(&stu2);
+    User *p;
+    User *tag;
+    tag = clas->pHead;
+    clas->pHead = clas->pHead->pNext;
+    tag->pNext = NULL;
+    while(clas->pHead != NULL){
+        p = clas->pHead;
+        clas->pHead = clas->pHead->pNext;
+        p->pNext = NULL;
+        if(p->status >= tag->status) {
+            addUser(&stu1, p);
+        }
+        else addUser(&stu2, p);
+    }
+    sortListStatus(&stu1);
+    sortListStatus(&stu2);
+    if(stu1.pHead != NULL){
+        clas->pHead = stu1.pHead;
+        stu1.pTail->pNext = tag;
+    }
+    else{
+        clas->pHead = tag;
+    }
+    tag->pNext = stu2.pHead;
+    if(stu2.pHead != NULL){
+        clas->pTail = stu2.pTail;
+    }
+    else{
+        clas->pTail = tag;
     }
 }
 
-void Traverse(node head) {
-    for(node p = head; p != NULL; p = p->next){
-        printf("%s\t%s\t%d\n", p->username, p->password, p->status);
+void sortListWontimes(List *clas){
+    List stu1, stu2;
+    if(clas->pHead == clas->pTail) return;
+    InitList(&stu1);  InitList(&stu2);
+    User *p;
+    User *tag;
+    tag = clas->pHead;
+    clas->pHead = clas->pHead->pNext;
+    tag->pNext = NULL;
+    while(clas->pHead != NULL){
+        p = clas->pHead;
+        clas->pHead = clas->pHead->pNext;
+        p->pNext = NULL;
+        if(p->win_times >= tag->win_times) {
+            addUser(&stu1, p);
+        }
+        else addUser(&stu2, p);
+    }
+    sortListWontimes(&stu1);
+    sortListWontimes(&stu2);
+    if(stu1.pHead != NULL){
+        clas->pHead = stu1.pHead;
+        stu1.pTail->pNext = tag;
+    }
+    else{
+        clas->pHead = tag;
+    }
+    tag->pNext = stu2.pHead;
+    if(stu2.pHead != NULL){
+        clas->pTail = stu2.pTail;
+    }
+    else{
+        clas->pTail = tag;
     }
 }
 
-static char *itoa_simple_helper(char *dest, int i) {
-  if (i <= -10) {
-    dest = itoa_simple_helper(dest, i/10);
-  }
-  *dest++ = '0' - i%10;
-  return dest;
-}
+int checkBuff(char needCheck[], char *number, char *alpha){
+	int countNumber = 0, countAlphabet = 0;
 
-char *itoa_simple(char *dest, int i) {
-  char *s = dest;
-  if (i < 0) {
-    *s++ = '-';
-  } else {
-    i = -i;
-  }
-  *itoa_simple_helper(s, i) = '\0';
-  return dest;
+	for (int i = 0; i < strlen(needCheck); i++)
+	{
+		if(needCheck[i] > 47 && needCheck[i] < 58){
+			number[countNumber] = needCheck[i];
+			countNumber ++;
+		}
+        else if((needCheck[i] > 64 && needCheck[i] < 91) || (needCheck[i] > 96 && needCheck[i] < 123)){
+            alpha[countAlphabet] = needCheck[i];
+            countAlphabet ++;
+        }
+        else return 0;
+	}
+    return 1;
 }
