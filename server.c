@@ -307,13 +307,6 @@ void* gameplay(void* arg){
         }
         for(i = 0; i < 2; i++){
 			    if(client[i] != fd){
-                    //printf("Key is %s", key);
-            printf("Key is %s\n", key);
-        } else {
-            key[0] = DEFAULT_KEY;
-        }
-        for(i = 0; i < 2; i++){
-			    if(client[i] != fd){
                     // printf("Key is %s\n", key);
                     if(write(client[i], key, 2) < 0){
                         perror("ERROR: write to descriptor failed");
@@ -327,9 +320,9 @@ void* gameplay(void* arg){
 //Main function
 int main(){
     room = (char *)malloc(256*sizeof(char));
-    int                socket_fds[MAX_PLAYERS];     
+    int socket_fds[MAX_PLAYERS];     
     struct sockaddr_in socket_addr[MAX_PLAYERS];
-    int                i, left_point = 0, right_point = 0;
+    int i;
 
     //Handle Ctrl+C
     signal(SIGINT, ctrl_c_handler);
@@ -361,9 +354,10 @@ int main(){
                 error("ERROR on accept");
             
             client[i-1] = socket_fds[i];
-            if(someone_won){
+            
+            if(someone_won)
                 someone_won = 0;
-            }
+            
             make_thread(&gameplay, &socket_fds[i]); 
         }
         //Closing the server socket

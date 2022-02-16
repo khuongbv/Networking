@@ -209,9 +209,7 @@ int sign_to_server(int sockfd){
                     }
                     printf("|             => [1]. Join waiting-room           |\n");
                     printf("|             => [2]. Change password             |\n");
-                    printf("|             => [3]. Show profile                |\n");
-                    printf("|             => [4]. Show leaderboard            |\n");
-                    printf("|             => [5]. Quit game                   |\n");
+                    printf("|             => [3]. Quit game                   |\n");
                     printf("|_________________________________________________|\n");
                     if(signup == -10){
                         printf("Please reconnect in a few minutes because server is overloading ...\n");
